@@ -4,20 +4,14 @@
 
 package com.andrew.apolloMod.preferences;
 
-import java.util.List;
-
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
-import android.net.Uri;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.ListPreference;
@@ -25,26 +19,25 @@ import android.preference.Preference;
 import android.preference.Preference.OnPreferenceChangeListener;
 import android.preference.Preference.OnPreferenceClickListener;
 import android.preference.PreferenceActivity;
+import android.text.SpannableString;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
 import android.view.MenuItem;
-import android.view.View;
+import android.webkit.WebView;
+import android.widget.TextView;
 
 import com.andrew.apolloMod.IApolloService;
 import com.andrew.apolloMod.R;
-import com.andrew.apolloMod.activities.MusicLibrary;
 import com.andrew.apolloMod.cache.ImageProvider;
 import com.andrew.apolloMod.helpers.utils.MusicUtils;
-import com.andrew.apolloMod.helpers.utils.ThemeUtils;
 import com.andrew.apolloMod.service.ApolloService;
 import com.andrew.apolloMod.service.ServiceToken;
 
-import static com.andrew.apolloMod.Constants.APOLLO;
-import static com.andrew.apolloMod.Constants.THEME_PACKAGE_NAME;
-import static com.andrew.apolloMod.Constants.THEME_PREVIEW;
 import static com.andrew.apolloMod.Constants.WIDGET_STYLE;
-/**
- * @author Andrew Neal FIXME - Work on the IllegalStateException thrown when
- *         using PreferenceFragment and theme chooser
- */
+import static com.andrew.apolloMod.Constants.DELETE_CACHE;
+import static com.andrew.apolloMod.Constants.BUILD_VERSION;
+import static com.andrew.apolloMod.Constants.BUILD_DEPENDS;
+
 @SuppressWarnings("deprecation")
 public class SettingsHolder extends PreferenceActivity  implements ServiceConnection  {
 	Context mContext;
@@ -66,11 +59,11 @@ public class SettingsHolder extends PreferenceActivity  implements ServiceConnec
         // Init delete cache option
         initDeleteCache();
         
-        // Load the theme chooser
-        initThemeChooser();
+        // Init about dialog
+        initAboutDialog();
         
-        //Enable up button
-       // getActionBar().setDisplayHomeAsUpEnabled(true);
+        initDependencies();
+        
     }
 
     @Override
@@ -94,11 +87,72 @@ public class SettingsHolder extends PreferenceActivity  implements ServiceConnec
         });
     }
 
+    private void initAboutDialog(){
+        final Preference aboutApolloMod = findPreference(BUILD_VERSION);
+        String versionName = null;
+		try {
+			versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+		} catch (NameNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		if(versionName!=null){
+	        aboutApolloMod.setSummary(versionName);
+		}
+        aboutApolloMod.setOnPreferenceClickListener(new OnPreferenceClickListener() {
+            @Override
+            public boolean onPreferenceClick(final Preference preference) {
+            	  final TextView message = new TextView(mContext);
+            	  message.setPadding(25, 25, 25, 25);
+            	  // i.e.: R.string.dialog_message =>
+            	            // "Test this dialog following the link to dtmilano.blogspot.com"
+            	  final SpannableString s = new SpannableString(mContext.getText(R.string.about_apollomod_message));
+            	  Linkify.addLinks(s, Linkify.WEB_URLS);
+            	  message.setText(s);
+            	  message.setMovementMethod(LinkMovementMethod.getInstance());
+
+            	 new AlertDialog.Builder(SettingsHolder.this)
+            	  		.setTitle(R.string.about_apollomod_title)
+            	  		.setCancelable(true)
+            	  		.setPositiveButton(android.R.string.ok, null)
+            	  		.setView(message)
+            	  		.create()
+            	  		.show();
+            	 
+
+            	
+            	
+            	
+            	
+            	return true;
+            }
+        });
+    	
+    }
+    
+    private void initDependencies(){
+        final Preference buildDepend = findPreference(BUILD_DEPENDS);
+        buildDepend.setOnPreferenceClickListener(new OnPreferenceClickListener() {
+            @Override
+            public boolean onPreferenceClick(final Preference preference) {
+            	
+            	final WebView webView = new WebView(mContext);
+                webView.loadUrl("file:///android_asset/licenses.html");
+                new AlertDialog.Builder(mContext)
+                        .setTitle(R.string.dependencies_title)
+                        .setView(webView)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .create()
+                        .show();
+                return true;
+            }
+        });
+    }
     /**
      * Removes all of the cache entries.
      */
     private void initDeleteCache() {
-        final Preference deleteCache = findPreference("delete_cache");
+        final Preference deleteCache = findPreference(DELETE_CACHE);
         deleteCache.setOnPreferenceClickListener(new OnPreferenceClickListener() {
             @Override
             public boolean onPreferenceClick(final Preference preference) {
@@ -119,69 +173,6 @@ public class SettingsHolder extends PreferenceActivity  implements ServiceConnec
             }
         });
     }
-    
-
-    /**
-     * @param v
-     */
-    public void applyTheme(View v) {
-        ThemePreview themePreview = (ThemePreview)findPreference(THEME_PREVIEW);
-        String packageName = themePreview.getValue().toString();
-        ThemeUtils.setThemePackageName(this, packageName);
-        Intent intent = new Intent();
-        intent.setClass(this, MusicLibrary.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-        finish();
-    }
-
-    /**
-     * @param v
-     */
-    public void getThemes(View v) {
-        Uri marketUri = Uri
-                .parse("https://market.android.com/search?q=ApolloThemes&c=apps&featured=APP_STORE_SEARCH");
-        Intent marketIntent = new Intent(Intent.ACTION_VIEW).setData(marketUri);
-        startActivity(marketIntent);
-        finish();
-    }
-
-    /**
-     * Set up the theme chooser
-     */
-    public void initThemeChooser() {
-        SharedPreferences sp = getPreferenceManager().getSharedPreferences();
-        String themePackage = sp.getString(THEME_PACKAGE_NAME, APOLLO);
-        ListPreference themeLp = (ListPreference)findPreference(THEME_PACKAGE_NAME);
-        themeLp.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
-            @Override
-            public boolean onPreferenceChange(Preference preference, Object newValue) {
-                ThemePreview themePreview = (ThemePreview)findPreference(THEME_PREVIEW);
-                themePreview.setTheme(newValue.toString());
-                return false;
-            }
-        });
-
-        Intent intent = new Intent("com.andrew.apollo.THEMES");
-        intent.addCategory("android.intent.category.DEFAULT");
-        PackageManager pm = getPackageManager();
-        List<ResolveInfo> themes = pm.queryIntentActivities(intent, 0);
-        String[] entries = new String[themes.size() + 1];
-        String[] values = new String[themes.size() + 1];
-        entries[0] = APOLLO;
-        values[0] = APOLLO;
-        for (int i = 0; i < themes.size(); i++) {
-            String appPackageName = (themes.get(i)).activityInfo.packageName.toString();
-            String themeName = (themes.get(i)).loadLabel(pm).toString();
-            entries[i + 1] = themeName;
-            values[i + 1] = appPackageName;
-        }
-        themeLp.setEntries(entries);
-        themeLp.setEntryValues(values);
-        ThemePreview themePreview = (ThemePreview)findPreference(THEME_PREVIEW);
-        themePreview.setTheme(themePackage);
-    }
-    
 
     @Override
     public void onServiceConnected(ComponentName name, IBinder obj) {

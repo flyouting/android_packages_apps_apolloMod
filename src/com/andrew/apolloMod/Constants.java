@@ -15,14 +15,13 @@ public final class Constants {
     // SharedPreferences
     public final static String APOLLO = "Apollo", APOLLO_PREFERENCES = "apollopreferences",
             ARTIST_KEY = "artist", ALBUM_KEY = "album", ALBUM_ID_KEY = "albumid", NUMALBUMS = "num_albums",
-            GENRE_KEY = "genres", ARTIST_ID = "artistid", NUMWEEKS = "numweeks",
+            GENRE_KEY = "genres", ARTIST_ID = "artistid", NUMWEEKS = "numweeks",BUILD_DEPENDS = "build_depends",
             PLAYLIST_NAME_FAVORITES = "Favorites", PLAYLIST_NAME = "playlist", WIDGET_STYLE="widget_type",
-            THEME_PACKAGE_NAME = "themePackageName", THEME_DESCRIPTION = "themeDescription",
-            THEME_PREVIEW = "themepreview", THEME_TITLE = "themeTitle", VISUALIZATION_TYPE="visualization_type", 
+            VISUALIZATION_TYPE="visualization_type", DELETE_CACHE="delete_cache", BUILD_VERSION = "build_version",
             UP_STARTS_ALBUM_ACTIVITY = "upStartsAlbumActivity", TABS_ENABLED = "tabs_enabled";
     
     //Image Loading Constants
-    public final static String TYPE_ARTIST = "artist", TYPE_ALBUM = "album", TYPE_GENRE = "genre",
+    public final static String TYPE_ARTIST = "artist", TYPE_ALBUM = "album", TYPE_GENRE = "genre", TYPE_SONG = "song",
     		TYPE_PLAYLIST  = "playlist", ALBUM_SUFFIX = "albartimg", ARTIST_SUFFIX = "artstimg", 
     		PLAYLIST_SUFFIX = "plylstimg", GENRE_SUFFIX = "gnreimg", SRC_FIRST_AVAILABLE = "first_avail",
     		SRC_LASTFM = "last_fm", SRC_FILE = "from_file", SRC_GALLERY = "from_gallery",

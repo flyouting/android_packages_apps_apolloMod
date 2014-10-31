@@ -4,11 +4,9 @@
 
 package com.andrew.apolloMod.activities;
 
-import android.app.Activity;
 import android.app.SearchManager;
 import android.content.*;
 import android.content.pm.ActivityInfo;
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.DatabaseUtils;
 import android.media.AudioManager;
@@ -19,11 +17,17 @@ import android.provider.BaseColumns;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Audio;
 import android.provider.MediaStore.Audio.ArtistColumns;
+import android.provider.MediaStore.Audio.Genres;
+import android.provider.MediaStore.Audio.Playlists;
+import android.support.v4.app.FragmentActivity;
 import android.support.v4.view.ViewPager;
+import android.support.v4.view.ViewPager.SimpleOnPageChangeListener;
 import android.view.ContextMenu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.FrameLayout;
+import android.view.Window;
+import android.view.View.OnClickListener;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -33,12 +37,17 @@ import com.andrew.apolloMod.cache.ImageInfo;
 import com.andrew.apolloMod.cache.ImageProvider;
 import com.andrew.apolloMod.helpers.utils.ApolloUtils;
 import com.andrew.apolloMod.helpers.utils.MusicUtils;
-import com.andrew.apolloMod.helpers.utils.ThemeUtils;
 import com.andrew.apolloMod.ui.adapters.PagerAdapter;
+import com.andrew.apolloMod.ui.fragments.BottomActionBarFragment;
+import com.andrew.apolloMod.ui.fragments.list.AlbumListFragment;
 import com.andrew.apolloMod.ui.fragments.list.ArtistAlbumsFragment;
-import com.andrew.apolloMod.ui.fragments.list.TracksFragment;
+import com.andrew.apolloMod.ui.fragments.list.ArtistListFragment;
+import com.andrew.apolloMod.ui.fragments.list.GenreListFragment;
+import com.andrew.apolloMod.ui.fragments.list.PlaylistListFragment;
 import com.andrew.apolloMod.service.ApolloService;
 import com.andrew.apolloMod.service.ServiceToken;
+import com.sothree.slidinguppanel.SlidingUpPanelLayout;
+import com.sothree.slidinguppanel.SlidingUpPanelLayout.PanelSlideListener;
 
 import static com.andrew.apolloMod.Constants.*;
 
@@ -46,9 +55,9 @@ import static com.andrew.apolloMod.Constants.*;
  * @author Andrew Neal
  * @Note This displays specific track or album listings
  */
-public class TracksBrowser extends Activity implements ServiceConnection {
-
-    // Bundle
+public class TracksBrowser extends FragmentActivity implements ServiceConnection {
+	
+	 // Bundle
     private Bundle bundle;
 
     private Intent intent;
@@ -60,10 +69,21 @@ public class TracksBrowser extends Activity implements ServiceConnection {
     private int RESULT_LOAD_IMAGE = 1;
     
     private ImageProvider mImageProvider;
-
+    
+    private ViewPager mViewPager = null;
+    
+    private ImageButton mChangeButton;
+    
+    private SlidingUpPanelLayout mPanel;
+    
+    BottomActionBarFragment mBActionbar;
+    
     @Override
     protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
+        
+        getWindow().requestFeature(Window.FEATURE_ACTION_BAR_OVERLAY);
+        
         // Landscape mode on phone isn't ready
         if (!ApolloUtils.isTablet(this))
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
@@ -75,24 +95,61 @@ public class TracksBrowser extends Activity implements ServiceConnection {
         setContentView(R.layout.track_browser);
         registerForContextMenu(findViewById(R.id.half_artist_image));
 
+        mBActionbar =(BottomActionBarFragment) getSupportFragmentManager().findFragmentById(R.id.bottomactionbar_new);
+        mBActionbar.setUpQueueSwitch(this);
+        
+        mPanel = (SlidingUpPanelLayout) findViewById(R.id.sliding_layout);
+        mPanel.setAnchorPoint(0);        
+        mPanel.setDragView(findViewById(R.id.bottom_action_bar_dragview));
+        mPanel.setShadowDrawable(getResources().getDrawable(R.drawable.above_shadow));
+        mPanel.setAnchorPoint(0.0f);
+        mPanel.setPanelSlideListener(new PanelSlideListener() {
+            @Override
+            public void onPanelSlide(View panel, float slideOffset) {
+                if (slideOffset < 0.2) {
+                    mBActionbar.onExpanded();
+                    if (getActionBar().isShowing()) {
+                        getActionBar().hide();
+                    }
+                } else {
+                    mBActionbar.onCollapsed();
+                    if (!getActionBar().isShowing()) {
+                        getActionBar().show();
+                    }
+                }
+            }
+            @Override
+            public void onPanelExpanded(View panel) {}
+            @Override
+            public void onPanelCollapsed(View panel) {}
+            @Override
+            public void onPanelAnchored(View panel) {}
+        });
         //ImageCache
     	mImageProvider = ImageProvider.getInstance( this );
-
         // Important!
         whatBundle(icicle);
-
         // Update the colorstrip color
         initColorstrip();
-
         // Update the ActionBar
         initActionBar();
-
         // Update the half_and_half layout
         initUpperHalf();
-
         // Important!
         initPager();
     }
+    
+
+    @Override
+    public void onBackPressed() {
+        //super.onBackPressed();
+    	if(mPanel.isExpanded()){
+            mPanel.collapsePane();
+    	}
+    	else{
+    		super.onBackPressed();
+    	}
+    }    
     
     @Override
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
@@ -106,17 +163,13 @@ public class TracksBrowser extends Activity implements ServiceConnection {
         	menu.setHeaderTitle(R.string.image_edit_albums);
         	getMenuInflater().inflate(R.menu.context_albumimage, menu); 
         	
-        } else if (Audio.Playlists.CONTENT_TYPE.equals(mimeType)) {
-        	
+        } else if (Audio.Playlists.CONTENT_TYPE.equals(mimeType)) {        	
         	menu.setHeaderTitle(R.string.image_edit_playlist);
-        	getMenuInflater().inflate(R.menu.context_playlist_genreimage, menu); 
-        	
+        	getMenuInflater().inflate(R.menu.context_playlist_genreimage, menu);         	
         }
-        else{
-        	
+        else{        	
         	menu.setHeaderTitle(R.string.image_edit_genre);
-        	getMenuInflater().inflate(R.menu.context_playlist_genreimage, menu); 
-        	
+        	getMenuInflater().inflate(R.menu.context_playlist_genreimage, menu);        	
         }
     }
     
@@ -177,7 +230,7 @@ public class TracksBrowser extends Activity implements ServiceConnection {
     
     public void onActivityResult(int requestCode, int resultCode, Intent data)
     {
-        if (resultCode == Activity.RESULT_OK && requestCode == RESULT_LOAD_IMAGE  && data != null)
+        if (resultCode == FragmentActivity.RESULT_OK && requestCode == RESULT_LOAD_IMAGE  && data != null)
 	    {
         	Uri selectedImage = data.getData();
 	        String[] filePathColumn = { MediaStore.Images.Media.DATA };
@@ -231,23 +284,19 @@ public class TracksBrowser extends Activity implements ServiceConnection {
      * Update next BottomActionBar as needed
      */
     private final BroadcastReceiver mMediaStatusReceiver = new BroadcastReceiver() {
-
         @Override
         public void onReceive(Context context, Intent intent) {
         	
         }
-
     };
 
     @Override
     protected void onStart() {
         // Bind to Service
         mToken = MusicUtils.bindToService(this, this);
-
         IntentFilter filter = new IntentFilter();
         filter.addAction(ApolloService.META_CHANGED);
         registerReceiver(mMediaStatusReceiver, filter);
-
         setTitle();
         super.onStart();
     }
@@ -296,13 +345,9 @@ public class TracksBrowser extends Activity implements ServiceConnection {
      * For the theme chooser
      */
     private void initColorstrip() {
-        FrameLayout mColorstrip = (FrameLayout)findViewById(R.id.colorstrip);
-        mColorstrip.setBackgroundColor(getResources().getColor(R.color.holo_blue_dark));
-        ThemeUtils.setBackgroundColor(this, mColorstrip, "colorstrip");
 
         RelativeLayout mColorstrip2 = (RelativeLayout)findViewById(R.id.bottom_colorstrip);
         mColorstrip2.setBackgroundColor(getResources().getColor(R.color.holo_blue_dark));
-        ThemeUtils.setBackgroundColor(this, mColorstrip2, "colorstrip");
     }
 
     /**
@@ -310,21 +355,27 @@ public class TracksBrowser extends Activity implements ServiceConnection {
      */
     private void initActionBar() {
         ApolloUtils.showUpTitleOnly(getActionBar());
-
-        // The ActionBar Title and UP ids are hidden.
-        int titleId = Resources.getSystem().getIdentifier("action_bar_title", "id", "android");
-        int upId = Resources.getSystem().getIdentifier("up", "id", "android");
-
-        TextView actionBarTitle = (TextView)findViewById(titleId);
-        ImageView actionBarUp = (ImageView)findViewById(upId);
-
-        // Theme chooser
-        ThemeUtils.setActionBarBackground(this, getActionBar(), "action_bar_background");
-        ThemeUtils.setTextColor(this, actionBarTitle, "action_bar_title_color");
-        ThemeUtils.initThemeChooser(this, actionBarUp, "action_bar_up", THEME_ITEM_BACKGROUND);
-
     }
 
+    private void onToggleButton(){
+    	if(mViewPager!=null){
+    		int cur = mViewPager.getCurrentItem();
+    		if(cur == 0){
+    			mChangeButton.setImageResource(R.drawable.view_more_song);
+    			mViewPager.setCurrentItem(1);
+    			TextView lineTwoView = (TextView)findViewById(R.id.half_artist_image_text_line_two);
+    	        String lineTwo = MusicUtils.makeAlbumsLabel(this, 0, Integer.parseInt(getNumSongs()), true);
+    			lineTwoView.setText(lineTwo);
+    		}else{
+    			mChangeButton.setImageResource(R.drawable.view_more_album);
+    			mViewPager.setCurrentItem(0);
+    			TextView lineTwoView = (TextView)findViewById(R.id.half_artist_image_text_line_two);
+    			String lineTwo = MusicUtils.makeAlbumsLabel(this, Integer.parseInt(getNumAlbums()), 0, false);
+    	        lineTwoView.setText(lineTwo);
+    		}
+    	}    	
+    }
+    
     /**
      * Sets up the @half_and_half.xml layout
      */
@@ -337,6 +388,14 @@ public class TracksBrowser extends Activity implements ServiceConnection {
     	String lineTwo = "";
 
         if (ApolloUtils.isArtist(mimeType)) {
+        	mChangeButton = (ImageButton)findViewById(R.id.view_more);
+        	mChangeButton.setVisibility(View.VISIBLE);
+        	mChangeButton.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                	onToggleButton();
+                }
+            });
         	String mArtist = getArtist();
             mInfo.type = TYPE_ARTIST;
             mInfo.data = new String[]{ mArtist };  
@@ -375,25 +434,50 @@ public class TracksBrowser extends Activity implements ServiceConnection {
      */
     private void initPager() {
         // Initiate PagerAdapter
-        PagerAdapter mPagerAdapter = new PagerAdapter(getFragmentManager());
+        PagerAdapter mPagerAdapter = new PagerAdapter(getSupportFragmentManager());
         if (ApolloUtils.isArtist(mimeType))
             // Show all albums for an artist
             mPagerAdapter.addFragment(new ArtistAlbumsFragment(bundle));
         // Show the tracks for an artist or album
-        mPagerAdapter.addFragment(new TracksFragment(bundle));
+        if(Playlists.CONTENT_TYPE.equals(mimeType)){
+            mPagerAdapter.addFragment(new PlaylistListFragment(bundle));
+        }
+        else if(Genres.CONTENT_TYPE.equals(mimeType)){
+        	mPagerAdapter.addFragment(new GenreListFragment(bundle));
+        }
+        else if(ApolloUtils.isArtist(mimeType)){
+        	mPagerAdapter.addFragment(new ArtistListFragment(bundle));
+        }
+        else if(Audio.Albums.CONTENT_TYPE.equals(mimeType)){
+        	mPagerAdapter.addFragment(new AlbumListFragment(bundle));
+        }
 
         // Set up ViewPager
-        ViewPager mViewPager = (ViewPager)findViewById(R.id.viewPager);
+        mViewPager = (ViewPager)findViewById(R.id.viewPager);
         mViewPager.setPageMargin(getResources().getInteger(R.integer.viewpager_margin_width));
         mViewPager.setPageMarginDrawable(R.drawable.viewpager_margin);
         mViewPager.setOffscreenPageLimit(mPagerAdapter.getCount());
         mViewPager.setAdapter(mPagerAdapter);
-
-        // Theme chooser
-        ThemeUtils.initThemeChooser(this, mViewPager, "viewpager", THEME_ITEM_BACKGROUND);
-        ThemeUtils.setMarginDrawable(this, mViewPager, "viewpager_margin");
+        mViewPager.setOnPageChangeListener(new PageListener());
     }
 
+    private class PageListener extends SimpleOnPageChangeListener{
+        public void onPageSelected(int cur) {            
+        	if(cur == 0){
+    			ImageButton mCButton = (ImageButton)findViewById(R.id.view_more);
+    			mCButton.setImageResource(R.drawable.view_more_album);
+    			TextView lineTwoView = (TextView)findViewById(R.id.half_artist_image_text_line_two);
+    			String lineTwo = MusicUtils.makeAlbumsLabel(TracksBrowser.this, Integer.parseInt(getNumAlbums()), 0, false);
+    	        lineTwoView.setText(lineTwo);
+    		}else{
+            	ImageButton mCButton = (ImageButton)findViewById(R.id.view_more);
+    			mCButton.setImageResource(R.drawable.view_more_song);
+    			TextView lineTwoView = (TextView)findViewById(R.id.half_artist_image_text_line_two);
+    	        String lineTwo = MusicUtils.makeAlbumsLabel(TracksBrowser.this, 0, Integer.parseInt(getNumSongs()), true);
+    			lineTwoView.setText(lineTwo);
+    		}
+	    }
+	}
     
     /**
      * @return artist name from Bundle
@@ -425,6 +509,36 @@ public class TracksBrowser extends Activity implements ServiceConnection {
     /**
      * @return number of albums from Bundle
      */
+    public String getNumSongs() {
+    	String[] projection = {
+                BaseColumns._ID, ArtistColumns.ARTIST, ArtistColumns.NUMBER_OF_TRACKS
+        };
+    	Uri uri = Audio.Artists.EXTERNAL_CONTENT_URI;        
+        Long id = ApolloUtils.getArtistId(getArtist(), ARTIST_ID, this);
+        Cursor cursor = null;
+        try{
+        	cursor = this.getContentResolver().query(uri, projection, BaseColumns._ID+ "=" + DatabaseUtils.sqlEscapeString(String.valueOf(id)), null, null);
+        }
+        catch(Exception e){
+        	e.printStackTrace();        	
+        }
+        if(cursor == null)
+        	return String.valueOf(0);
+        int mArtistNumAlbumsIndex = cursor.getColumnIndexOrThrow(ArtistColumns.NUMBER_OF_TRACKS);
+        if(cursor.getCount()>0){
+	    	cursor.moveToFirst();
+	        String numAlbums = cursor.getString(mArtistNumAlbumsIndex);	
+			cursor.close();
+	        if(numAlbums != null){
+	        	return numAlbums;
+	        }
+        }        
+        return String.valueOf(0);
+    }
+    
+    /**
+     * @return number of albums from Bundle
+     */
     public String getNumAlbums() {
         if (bundle.getString(NUMALBUMS) != null)
             return bundle.getString(NUMALBUMS);
@@ -445,7 +559,8 @@ public class TracksBrowser extends Activity implements ServiceConnection {
         int mArtistNumAlbumsIndex = cursor.getColumnIndexOrThrow(ArtistColumns.NUMBER_OF_ALBUMS);
         if(cursor.getCount()>0){
 	    	cursor.moveToFirst();
-	        String numAlbums = cursor.getString(mArtistNumAlbumsIndex);	  
+	        String numAlbums = cursor.getString(mArtistNumAlbumsIndex);	
+			cursor.close();
 	        if(numAlbums != null){
 	        	return numAlbums;
 	        }

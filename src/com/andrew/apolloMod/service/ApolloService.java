@@ -55,6 +55,7 @@ import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.preference.PreferenceManager;
 import android.provider.BaseColumns;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Audio;
@@ -84,6 +85,7 @@ import static com.andrew.apolloMod.Constants.DATA_SCHEME;
 import static com.andrew.apolloMod.Constants.SIZE_THUMB;
 import static com.andrew.apolloMod.Constants.SRC_FIRST_AVAILABLE;
 import static com.andrew.apolloMod.Constants.TYPE_ALBUM;
+import static com.andrew.apolloMod.Constants.VISUALIZATION_TYPE;
 
 public class ApolloService extends Service implements GetBitmapTask.OnBitmapReadyListener {
     /**
@@ -488,7 +490,7 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
         registerReceiver(mIntentReceiver, commandFilter);
 
         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
-        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, this.getClass().getName());
+        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getClass().getName());
         mWakeLock.setReferenceCounted(false);
 
         // If the service was idle, but got killed before it stopped itself, the
@@ -1065,9 +1067,6 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
      */
     public void open(long[] list, int position) {
         synchronized (this) {
-            if (mShuffleMode == SHUFFLE_AUTO) {
-                mShuffleMode = SHUFFLE_NORMAL;
-            }
             long oldId = getAudioId();
             int listlength = list.length;
             boolean newlist = true;
@@ -1088,7 +1087,7 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
             if (position >= 0) {
                 mPlayPos = position;
             } else {
-                mPlayPos = mRand.nextInt(mPlayListLen);
+                mPlayPos = 0;
             }
             mHistory.clear();
 
@@ -1401,7 +1400,8 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
         status.icon = R.drawable.stat_notify_music;
         status.contentIntent = PendingIntent
                 .getActivity(this, 0, new Intent("com.andrew.apolloMod.PLAYBACK_VIEWER")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 0);
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra("started_from", "NOTIF_SERVICE"), PendingIntent.FLAG_CANCEL_CURRENT);
         startForeground(PLAYBACKSERVICE_STATUS, status);
     }
     
@@ -1521,9 +1521,7 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
 
             // Store the current file in the history, but keep the history at a
             // reasonable size
-            if (mPlayPos >= 0) {
-                mHistory.add(mPlayPos);
-            }
+			
             if (mHistory.size() > MAX_HISTORY_SIZE) {
                 mHistory.removeElementAt(0);
             }
@@ -1605,6 +1603,10 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
                     notifyChange(PLAYSTATE_CHANGED);
                 }
                 return;
+            }
+
+            if (mPlayPos >= 0) {
+                mHistory.add(mPlayPos);
             }
             mPlayPos = pos;
             saveBookmarkIfNeeded();
@@ -1807,6 +1809,50 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
         return numremoved;
     }
 
+
+    /**
+     * Moves an item in the queue from one position to another
+     *
+     * @param from The position the item is currently at
+     * @param to The position the item is being moved to
+     */
+    public void moveQueueItem(int index1, int index2) {
+        synchronized (this) {
+            if (index1 >= mPlayListLen) {
+                index1 = mPlayListLen - 1;
+            }
+            if (index2 >= mPlayListLen) {
+                index2 = mPlayListLen - 1;
+            }
+            if (index1 < index2) {
+                final long tmp = mPlayList[index1];
+                for (int i = index1; i < index2; i++) {
+                    mPlayList[i] = mPlayList[i + 1];
+                }
+                mPlayList[index2] = tmp;
+                if (mPlayPos == index1) {
+                    mPlayPos = index2;
+                } else if (mPlayPos >= index1 && mPlayPos <= index2) {
+                    mPlayPos--;
+                }
+            } else if (index2 < index1) {
+                final long tmp = mPlayList[index1];
+                for (int i = index1; i > index2; i--) {
+                    mPlayList[i] = mPlayList[i - 1];
+                }
+                mPlayList[index2] = tmp;
+                if (mPlayPos == index1) {
+                    mPlayPos = index2;
+                } else if (mPlayPos >= index2 && mPlayPos <= index1) {
+                    mPlayPos++;
+                }
+            }
+            notifyChange(QUEUE_CHANGED);
+        }
+    }
+    
+    
+    
     private int removeTracksInternal(int first, int last) {
         synchronized (this) {
             if (last < first)
@@ -2229,8 +2275,15 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
             i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, getAudioSessionId());
             i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, getPackageName());
             sendBroadcast(i);
-
-            VisualizerUtils.initVisualizer( player );
+            Intent intent = new Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+    	    if (getPackageManager().resolveActivity(intent, 0) == null) {
+    	    	MusicUtils.initEqualizer( player , getApplicationContext());
+    	    }    	                                
+            SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+            String type = sp.getString(VISUALIZATION_TYPE, getResources().getString(R.string.visual_none));                    
+    	    if(!type.equals(getResources().getString(R.string.visual_none))){
+        	    VisualizerUtils.initVisualizer( player );
+            }
             return true;
         }
 
@@ -2505,7 +2558,10 @@ public class ApolloService extends Service implements GetBitmapTask.OnBitmapRead
         public int removeTracks(int first, int last) {
             return mService.get().removeTracks(first, last);
         }
-
+        @Override
+        public void moveQueueItem(int from, int to){
+            mService.get().moveQueueItem(from, to);
+        }
         @Override
         public int removeTrack(long id) {
             return mService.get().removeTrack(id);

@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.andrew.apolloMod"
     android:versionCode="1"
-    android:versionName="1.0" >
+    android:versionName="1.5" >
 
     <uses-sdk
         android:minSdkVersion="14"
@@ -32,7 +32,7 @@
         android:largeHeap="true"
         android:process=":main"
         android:taskAffinity="apollo.task.music"
-        android:theme="@android:style/Theme.Holo.Light" >
+        android:theme="@style/ApolloTheme" >
         <meta-data
             android:name="android.app.default_searchable"
             android:value=".activities.QueryBrowserActivity" />
@@ -40,7 +40,7 @@
         <activity
             android:name=".activities.QueryBrowserActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Holo.Light" >
+            android:theme="@style/ApolloTheme" >
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
                 <action android:name="android.intent.action.MEDIA_SEARCH" />
@@ -68,6 +68,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.APP_MUSIC" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.andrew.apolloMod.PLAYBACK_VIEWER" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
         <!-- Now Playing -->
         <activity
@@ -88,11 +93,6 @@
                 <data android:mimeType="application/ogg" />
                 <data android:mimeType="application/x-ogg" />
                 <data android:mimeType="application/itunes" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.andrew.apolloMod.PLAYBACK_VIEWER" />
-
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
         <!-- Play External File -->
@@ -142,6 +142,14 @@
             android:name=".preferences.SettingsHolder"
         	android:logo="@drawable/ic_logo"
             android:label="@string/settings" />
+        <!-- Simple EQ -->
+        <activity
+            android:name=".activities.SimpleEq"
+            android:excludeFromRecents="true"
+            android:label="@string/simple_eq_page_title"
+            android:windowSoftInputMode="adjustPan" 
+        	android:parentActivityName=".activities.MusicLibrary" />
+
         <activity
             android:name=".menu.PlaylistDialog"
             android:label="@string/rename_playlist"

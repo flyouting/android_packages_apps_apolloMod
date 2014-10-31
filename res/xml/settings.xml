@@ -2,19 +2,6 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
 
     <PreferenceCategory android:title="@string/header_interface" >
-        <PreferenceScreen
-            android:icon="@drawable/apollo_settings_themes"
-            android:key="@string/key_themes_preferences"
-            android:title="@string/themes" >
-            <ListPreference
-                android:key="@string/key_themes_package"
-                android:summary="@string/apollo_themes"
-                android:title="@string/select_theme" />
-
-            <com.andrew.apolloMod.preferences.ThemePreview
-                android:key="@string/key_themes"
-                android:layout="@layout/theme_preview" />
-        </PreferenceScreen>
         <MultiSelectListPreference
 	        android:dialogTitle="@string/tab_visibility_title"
 	        android:key="@string/key_tabs_enabled"
@@ -51,17 +38,18 @@
 
         <!-- Delete cache -->
         <Preference
-            android:key="delete_cache"
+            android:key="@string/key_delete_cache"
             android:summary="@string/settings_delete_cache_summary"
             android:title="@string/settings_delete_cache_title" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/about" >
         <Preference
-            style="?android:preferenceInformationStyle"
-            android:enabled="false"
             android:key="@string/key_build_version"
-            android:summary="1.0"
+            android:summary="@string/app_version_number"
             android:title="@string/version" />
+        <Preference
+            android:key="@string/key_build_depends"
+            android:title="@string/dependencies" />
     </PreferenceCategory>
 
 </PreferenceScreen>

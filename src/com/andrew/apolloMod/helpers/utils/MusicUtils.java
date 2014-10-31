@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 
 import android.app.Activity;
 import android.app.SearchManager;
@@ -20,6 +21,9 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.database.Cursor;
+import android.media.MediaPlayer;
+import android.media.audiofx.BassBoost;
+import android.media.audiofx.Equalizer;
 import android.net.Uri;
 import android.os.RemoteException;
 import android.provider.BaseColumns;
@@ -43,11 +47,17 @@ import com.andrew.apolloMod.service.ApolloService;
 import com.andrew.apolloMod.service.ServiceBinder;
 import com.andrew.apolloMod.service.ServiceToken;
 
+import static com.andrew.apolloMod.Constants.APOLLO_PREFERENCES;
 import static com.andrew.apolloMod.Constants.EXTERNAL;
 import static com.andrew.apolloMod.Constants.GENRES_DB;
 import static com.andrew.apolloMod.Constants.PLAYLIST_NAME_FAVORITES;
 import static com.andrew.apolloMod.Constants.PLAYLIST_NEW;
 import static com.andrew.apolloMod.Constants.PLAYLIST_QUEUE;
+import static com.andrew.apolloMod.Constants.TYPE_ALBUM;
+import static com.andrew.apolloMod.Constants.TYPE_ARTIST;
+import static com.andrew.apolloMod.Constants.TYPE_PLAYLIST;
+import static com.andrew.apolloMod.Constants.TYPE_GENRE;
+import static com.andrew.apolloMod.Constants.TYPE_SONG;
 
 /**
  * Various methods used to help with specific music statements
@@ -68,6 +78,10 @@ public class MusicUtils {
     private static final Object[] sTimeArgs = new Object[5];
 
     private static ContentValues[] sContentValuesCache = null;
+    
+    private static Equalizer mEqualizer = null;
+    
+    private static BassBoost mBoost = null;
 
     /**
      * @param context
@@ -115,6 +129,75 @@ public class MusicUtils {
         }
     }
 
+    public static void releaseEqualizer(){
+    	if(mEqualizer != null){
+    		mEqualizer.release();
+    	}
+    	if(mBoost != null){
+    		mBoost.release();
+    	}
+    }
+    /**
+     * @param media player from apollo service.
+     */
+    public static void initEqualizer(MediaPlayer player, Context context){
+    	releaseEqualizer();
+    	int id = player.getAudioSessionId();
+    	mEqualizer = new Equalizer(1,id);
+    	mBoost = new BassBoost(1, id);
+    	updateEqualizerSettings(context);
+    }
+
+    public static int[] getEqualizerFrequencies(){
+    	short numBands = mEqualizer.getNumberOfBands()<=6?mEqualizer.getNumberOfBands():6;	
+    	int[] freqs= new int[numBands];
+    	if(mEqualizer != null){
+			for( int i = 0; i <= numBands-1 ; i++ ){
+				int[] temp = mEqualizer.getBandFreqRange((short)i);
+				freqs[i] = ((temp[1]-temp[0])/2)+temp[0];
+			}
+			return freqs;
+    	}
+    	return null;
+    }
+    
+	public static void updateEqualizerSettings(Context context){
+
+        SharedPreferences mPreferences = context.getSharedPreferences(APOLLO_PREFERENCES, Context.MODE_WORLD_READABLE
+                | Context.MODE_WORLD_WRITEABLE);
+
+    	if(mBoost != null){
+    		mBoost.setEnabled(mPreferences.getBoolean("simple_eq_boost_enable", false));
+    		mBoost.setStrength ((short)(mPreferences.getInt("simple_eq_bboost",0)*10));
+    	}
+    	
+    	if(mEqualizer != null){
+	    	mEqualizer.setEnabled(mPreferences.getBoolean("simple_eq_equalizer_enable", false));
+	    	short numBands = mEqualizer.getNumberOfBands()<=6?mEqualizer.getNumberOfBands():6;
+	    	short r[] = mEqualizer.getBandLevelRange();
+	        short min_level = r[0];
+	        short max_level = r[1];
+	    	for( int i = 0; i <= (numBands -1) ; i++ ){
+	            int new_level = min_level + (max_level - min_level) * mPreferences.getInt("simple_eq_seekbars"+String.valueOf(i),100) / 100; 
+	            mEqualizer.setBandLevel ((short)i, (short)new_level);
+	    	}
+    	}
+    }
+
+    /**
+     * @param from The index the item is currently at.
+     * @param to The index the item is moving to.
+     */
+    public static void moveQueueItem(final int from, final int to) {
+        try {
+            if (mService != null) {
+                mService.moveQueueItem(from, to);
+            } else {
+            }
+        } catch (final RemoteException ignored) {
+        }
+    }
+    
     /**
      * @param context
      * @param numalbums
@@ -134,6 +217,7 @@ public class MusicUtils {
             sFormatBuilder.setLength(0);
             sFormatter.format(f, Integer.valueOf(numsongs));
             songs_albums.append(sFormatBuilder);
+            songs_albums.append("\n");
         } else {
             String f = r.getQuantityText(R.plurals.Nalbums, numalbums).toString();
             sFormatBuilder.setLength(0);
@@ -206,7 +290,9 @@ public class MusicUtils {
      * @param cursor
      */
     public static void shuffleAll(Context context, Cursor cursor) {
-        playAll(context, cursor, 0, true);
+
+        long[] list = getRandomSongListForCursor(cursor);
+        playAll(context, list, -1, false);
     }
 
     /**
@@ -267,6 +353,42 @@ public class MusicUtils {
         for (int i = 0; i < len; i++) {
             list[i] = cursor.getLong(colidx);
             cursor.moveToNext();
+        }
+        return list;
+    }
+    
+    /**
+     * @param cursor
+     * @return
+     */
+    public static long[] getRandomSongListForCursor(Cursor cursor) {
+        if (cursor == null) {
+            return sEmptyList;
+        }
+        int len = cursor.getCount();
+        long[] list = new long[len];
+        cursor.moveToFirst();
+        int colidx = -1;
+        try {
+            colidx = cursor.getColumnIndexOrThrow(Audio.Playlists.Members.AUDIO_ID);
+        } catch (IllegalArgumentException ex) {
+            colidx = cursor.getColumnIndexOrThrow(BaseColumns._ID);
+        }
+        for (int i = 0; i < len; i++) {
+            list[i] = cursor.getLong(colidx);
+            cursor.moveToNext();
+        }
+        int index;
+        Random random = new Random();
+        for (int i = list.length - 1; i > 0; i--)
+        {
+            index = random.nextInt(i + 1);
+            if (index != i)
+            {
+            	list[index] ^= list[i];
+            	list[i] ^= list[index];
+            	list[index] ^= list[i];
+            }
         }
         return list;
     }
@@ -422,6 +544,22 @@ public class MusicUtils {
             return list;
         }
         return sEmptyList;
+    }
+    
+    public static long[] getSongList( String Type , Context context , long id ){
+    	if ( Type == TYPE_ALBUM ){
+    		return MusicUtils.getSongListForAlbum(context, id);    		
+    	}
+    	else if( Type == TYPE_ARTIST ){
+    		return MusicUtils.getSongListForArtist(context, id);
+    	}
+    	else if( Type == TYPE_GENRE ){
+    		return MusicUtils.getSongListForGenre(context, id);
+    	}
+    	else if ( Type == TYPE_PLAYLIST ){
+    		return MusicUtils.getSongListForPlaylist(context, id);
+    	}    	
+    	return sEmptyList;
     }
 
     /**
@@ -733,9 +871,6 @@ public class MusicUtils {
                 mImageButton.setImageResource(R.drawable.apollo_holo_light_favorite_selected);
             } else {
                 mImageButton.setImageResource(R.drawable.apollo_holo_light_favorite_normal);
-                // Theme chooser
-                ThemeUtils.setImageButton(mImageButton.getContext(), mImageButton,
-                        "apollo_favorite_normal");
             }
         } catch (RemoteException e) {
             e.printStackTrace();
@@ -917,7 +1052,33 @@ public class MusicUtils {
         i.putExtra(SearchManager.QUERY, query);
         mContext.startActivity(Intent.createChooser(i, title));
     }
+    
+    /**
+     * Create a Search Chooser
+     */
+    public static void doSearch(Context mContext, Cursor mCursor, String Type) {
+        CharSequence title = null;
+        Intent i = new Intent();
+        i.setAction(MediaStore.INTENT_ACTION_MEDIA_SEARCH);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        String query = "";
 
+    	if ( Type == TYPE_ALBUM ){
+    		query = mCursor.getString(mCursor.getColumnIndexOrThrow(AlbumColumns.ALBUM));
+    	}
+    	else if( Type == TYPE_ARTIST ){
+    		query = mCursor.getString(mCursor.getColumnIndexOrThrow(ArtistColumns.ARTIST));
+    	}
+    	else if( Type == TYPE_GENRE ||  Type == TYPE_PLAYLIST ||  Type == TYPE_SONG ){
+    		query = mCursor.getString(mCursor.getColumnIndexOrThrow(MediaColumns.TITLE));
+    	}
+        title = "";
+        i.putExtra("", query);
+        title = title + " " + query;
+        title = "Search " + title;
+        i.putExtra(SearchManager.QUERY, query);
+        mContext.startActivity(Intent.createChooser(i, title));
+    }
     /**
      * Method that removes all tracks from the current queue
      */

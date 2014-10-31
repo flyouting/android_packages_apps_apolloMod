@@ -6,13 +6,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Iterator;
 
 import com.andrew.apolloMod.cache.ImageInfo;
 import com.andrew.apolloMod.helpers.lastfm.Album;
 import com.andrew.apolloMod.helpers.lastfm.Artist;
-import com.andrew.apolloMod.helpers.lastfm.Image;
-import com.andrew.apolloMod.helpers.lastfm.PaginatedResult;
 
 import android.content.Context;
 import android.database.Cursor;
@@ -115,15 +112,14 @@ public class ImageUtils {
 	            	imageUrl = image.getLargestImage();
 	            }
 	        }
-	        else if ( imageInfo.type.equals(TYPE_ARTIST) ) {
-		        PaginatedResult<Image> images = Artist.getImages(imageInfo.data[0], 2, 1, LASTFM_API_KEY);
-	            Iterator<Image> iterator = images.getPageResults().iterator();
-	            if (iterator.hasNext()) {
-		            Image image = iterator.next();	
-			        imageUrl = image.getLargestImage();
+	        else if( imageInfo.type.equals(TYPE_ARTIST) ){
+	        	Artist image = Artist.getInfo(imageInfo.data[0], LASTFM_API_KEY);
+	            if (image != null) {
+	            	imageUrl = image.getLargestImage();
 	            }
 	        }
         } catch ( Exception e ) {
+        	e.printStackTrace();
         	return null;
         }
         if ( imageUrl == null || imageUrl.isEmpty() ) {
